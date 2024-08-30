@@ -496,8 +496,6 @@ def gevol_func(t, Mvec, *args):
 
 #This is the stochastic SFR function
 
-t_sfr_ave = 0.1
-
 def gevol_func_stoch_sfr(t, Mvec, *args):
     """
     galaxy evolution model implemented in a function
@@ -1064,6 +1062,7 @@ def post_process(good_index=None,good_files=None,tmdlmdlt=None, data=None, param
             
             if iniconf["run params"]["run_size_model"] == "False":
                 rshalf_evos = np.ones(len(time_array_i))*(-99)
+                sfr_ave = np.ones(len(time_array_i))*(-99)
                 sfr_evos = np.ones(len(time_array_i))*(-99)
                 dummy1 = np.ones(len(time_array_i))*(-99)
                 
