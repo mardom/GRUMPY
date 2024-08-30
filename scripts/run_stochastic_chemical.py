@@ -190,9 +190,8 @@ def compute_M_index(ssp_ms):
 
     return m_ind
 
-
-def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
-                        ssps_ms=None,master_dict = None,t_master = None,
+def generate_main_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
+                        ssps_ms=None,main_dict = None,t_main = None,
                         ssps_ini_zfracs=None,org_fracs=None,elements_to_track=None,org_elements=None,
                         all_grid_nums=None,was_ssp_made=None):
     '''
@@ -200,25 +199,25 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
     ssps_tbirths = list, time of births of SSPs
     ssps_z = list, metallicities of SSPs at time of birth 
     ssps_ms = list, masses of SSPs at formation
-    master_sto_obj = dict, dictionary that contains the interpolating functions for evolutions of yZ, mass loss etc. 
+    main_sto_obj = dict, dictionary that contains the interpolating functions for evolutions of yZ, mass loss etc. 
     It is initially None (for first SSP) as this object has not been constructed yet
-    t_master = list, time steps at which the chemical evolution is being computed at 
-
+    t_main = list, time steps at which the chemical evolution is being computed at 
     I want to also return a list of all the grids used like the mass index and the iteration number
-
     '''
     
-    if master_dict== None:
-        t_ages = t_master - ssps_tbirths[0]
+    if main_dict== None:
+        t_ages = t_main - ssps_tbirths[0]
         #the first value of this should be zero
         if t_ages[0] != 0:
-            print("SOME ISSUE HERE.")
+            raise ValueError("SOME ISSUE HERE. The first age is not zero.")
             
         #if len of ssps lists is 1, then this is the first time this is being computed
         #the initial mass is 10 hence always going to be stochastic
+        #m_ind is computing what is the closest mass to use for resampling
         m_ind = compute_M_index(ssps_ms[0])
         #generate a random number 
         i_ind = np.random.randint(50)
+        #here we are selecting which of the stochastic grids to use
         grid_name = "M%d_I%d"%(m_ind,i_ind)
         stoc_0 = stoc_grids[grid_name]
         #stoc_i is the dict that will be used
@@ -226,7 +225,7 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
         logz_val = np.log10(ssps_z)*np.ones(shape = len(t_ages))
         #within this dict, we want the grids of yZ_gross, ms_surv, ms_feedback
         #we will also need individual elemental grids 
-        master_dict_new = {}
+        main_dict_new = {}
         all_keys = ["yZ_gross","ms_surv","ms_feedback"]
         for ki in all_keys:
             ki_0 = stoc_0[ki]
@@ -234,8 +233,8 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
             all_y_vals = ki_0(logz_val,np.log10(t_ages),grid = False)
             #do the interpolation now
             #we need to normalize all values to the mass of the SSP as grid values are for 1M SSP
-            ki_interp = interpolate.interp1d(t_master,all_y_vals * ssps_ms[0])
-            master_dict_new[ki] = ki_interp
+            ki_interp = interpolate.interp1d(t_main,all_y_vals * ssps_ms[0])
+            main_dict_new[ki] = ki_interp
 
         #now we compute the gross yields for each element being tracked
         for i,ei in enumerate(elements_to_track):
@@ -250,13 +249,13 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
 
             y_gross_ei = y_net_ei_vals + (ini_fracs_i/org_fracs_i) * y_delta_ei_vals
             #we scale the elemental yield by the SSP mass as grid values are for 1M SSP
-            ei_interp = interpolate.interp1d(t_master,y_gross_ei * ssps_ms[0])
+            ei_interp = interpolate.interp1d(t_main,y_gross_ei * ssps_ms[0])
 
-            master_dict_new[ei+"_gross"] = ei_interp
+            main_dict_new[ei+"_gross"] = ei_interp
 
         all_grid_nums.append([ m_ind,i_ind ] )
 
-        return master_dict_new,all_grid_nums
+        return main_dict_new,all_grid_nums
         
         
     else:
@@ -266,7 +265,7 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
         #however when this function is fun, it does not know that? and just remakes a new SSP with that 
         #last mass? If no new SSP...we need to keep using the same interpolation
 
-        #this is not the first time making master sto and so teh object already exists
+        #this is not the first time making main sto and so teh object already exists
         #we will just modify it by the latest SSP prop
 
 
@@ -283,15 +282,11 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
                 #we use the analytical grid
                 stoc_i = stoc_grids["analytical"]
                 all_grid_nums.append("analytical")
-
             
-            ### WHAT DO I DO HERE WHEN THERE IS NO NEW SSP??? 
-            ### I NEED TO NOT ADD ANYTHING TO THIS MASTER LIST WHEN NO NEW SSPS ARE BEING ADDED
-
-
+    
             all_keys = ["yZ_gross","ms_surv","ms_feedback"]
 
-            t_ages = t_master - ssps_tbirths[-1]
+            t_ages = t_main - ssps_tbirths[-1]
             t_age_pass = t_ages[t_ages>=0]
             t_age_pass[t_age_pass == 0] = 1e-3
 
@@ -299,9 +294,9 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
 
             for ki in all_keys:
                 ki_i = stoc_i[ki]
-                #ki_master is the y values at t_master using the master interpolator made till now
+                #ki_master is the y values at t_main using the master interpolator made till now
                 #we will update its values with the most recent SSP values
-                ki_master = master_dict[ki](t_master)
+                ki_master = main_dict[ki](t_main)
 
                 all_y_vals = ki_i(logz_val,np.log10(t_age_pass),grid = False)
 
@@ -309,9 +304,9 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
                 #we update the previous values with the new SSP values
                 #we scale the new values as grid values are for 1M SSP
                 ki_master_new = ki_master + all_y_vals * ssps_ms[-1]
-                ki_interp_new = interpolate.interp1d(t_master,ki_master_new )
+                ki_interp_new = interpolate.interp1d(t_main,ki_master_new )
                 #we update the values of the dictionary
-                master_dict[ki] = ki_interp_new
+                main_dict[ki] = ki_interp_new
 
             #consider the latest ssps ini fracs
             ssps_ini_zfracs_i = ssps_ini_zfracs[-1]
@@ -329,27 +324,27 @@ def generate_master_sto(stoc_grids=None,ssps_tbirths=None,ssps_z=None,
 
                 y_gross_ei = y_net_ei_vals + (ini_fracs_i/org_fracs_i) * y_delta_ei_vals
                 #we add some zeroes before hand to indicate no contribution from this SSP as it was not born then
-                #we do this so it is same size as t_master. We filter ages to be >= 0 earlier hence.
+                #we do this so it is same size as t_main. We filter ages to be >= 0 earlier hence.
                 y_gross_ei_tot = np.concatenate((t_ages[t_ages < 0]*0,y_gross_ei))
                 
-                #these are the original gross yields evaluated at t_master
-                y_gross_ei_master = master_dict[ei+"_gross"](t_master)
+                #these are the original gross yields evaluated at t_main
+                y_gross_ei_master = main_dict[ei+"_gross"](t_main)
                 #we combine the old values with values for the new SSP
                 y_gross_ei_new =  y_gross_ei_master + y_gross_ei_tot * ssps_ms[-1]
 
-                ei_interp_new = interpolate.interp1d(t_master,y_gross_ei_new)
+                ei_interp_new = interpolate.interp1d(t_main,y_gross_ei_new)
                 #we update the values of the dictionary
-                master_dict[ei + "_gross"] = ei_interp_new
+                main_dict[ei + "_gross"] = ei_interp_new
 
             #in general should make sure that the interpolating function fed to master dict should 
             # be fed time in units of age of universe
             #In contrast, the time fed to the 2D grids which we read is in age of SSP units.         
-            return master_dict, all_grid_nums
+            return main_dict, all_grid_nums
 
         if was_ssp_made[-1] == 0:
             #a new ssp was not made
 
-            return master_dict, all_grid_nums
+            return main_dict, all_grid_nums
 
 
 def store_chem_results(final_dict=None,elements_to_track=None,track_path=None,iniconf=None,resampling_ind = None,final_store_path=None):
@@ -478,6 +473,8 @@ def run_chempy_track(input_stuff):
     #we convert them to linear interpolation objects
     mgin_spl = interpolate.interp1d(tt, mgin_cumu)
     mh_spl = interpolate.interp1d(tt,mh_evo)
+    mg_total_spl = interpolate.interp1d(tt, mg_evo )
+
     if evolve_star == False:
         ms_spl = interpolate.interp1d(tt,ms_evo)
     if evolve_wind == False:
@@ -624,7 +621,7 @@ def run_chempy_track(input_stuff):
             sfr = (ms_spl(time_steps[i+1]) - ms_spl(time_steps[i]))/dt
             delta_ms = sfr * dt / Rloss1 #this is the new stellar mass forme
             #we correct for the assumed stellar return mass fraction assumed in org grumpy run
-            print(delta_ms)
+            # print(delta_ms)
 
         if evolve_wind == True:
             eta_wind = 0.
@@ -646,24 +643,22 @@ def run_chempy_track(input_stuff):
 
         #for all the existing SSPs, we want to compute the various yields and properties 
 
-        
-
         if i == 0:
-            master_dict = None
+            main_dict = None
 
-        master_dict,all_grid_nums = generate_master_sto(stoc_grids=stoc_grids,ssps_tbirths=ssps_tbirths,ssps_z=ssps_z,
-                        ssps_ms=ssps_ms,master_dict = master_dict,t_master = time_steps,
+        main_dict,all_grid_nums = generate_main_sto(stoc_grids=stoc_grids,ssps_tbirths=ssps_tbirths,ssps_z=ssps_z,
+                        ssps_ms=ssps_ms,main_dict = main_dict,t_main = time_steps,
                         ssps_ini_zfracs=ssps_ini_zfracs,org_fracs=org_fracs,elements_to_track=elements_to_track,
                         org_elements=org_elements,all_grid_nums=all_grid_nums,was_ssp_made=was_ssp_made)
 
 
-        Z_yield = master_dict["yZ_gross"](time_steps[i+1]) - master_dict["yZ_gross"](time_steps[i])
-        ms_survs = master_dict["ms_surv"](time_steps[i])
-        ssp_feedbacks = master_dict["ms_feedback"](time_steps[i+1]) - master_dict["ms_feedback"](time_steps[i])
+        Z_yield = main_dict["yZ_gross"](time_steps[i+1]) - main_dict["yZ_gross"](time_steps[i])
+        ms_survs = main_dict["ms_surv"](time_steps[i])
+        ssp_feedbacks = main_dict["ms_feedback"](time_steps[i+1]) - main_dict["ms_feedback"](time_steps[i])
 
         X_yields = []
         for xf in elements_to_track:
-            temp_xf = master_dict[xf+"_gross"](time_steps[i+1]) - master_dict[xf+"_gross"](time_steps[i])
+            temp_xf = main_dict[xf+"_gross"](time_steps[i+1]) - main_dict[xf+"_gross"](time_steps[i])
             X_yields.append(temp_xf)
 
     
@@ -691,7 +686,8 @@ def run_chempy_track(input_stuff):
         #WE UPDATE VALUES FOR NEXT TIME STEP NOW
         Mg_next = Mg + mgin_new + ssp_feedbacks  - delta_ms - wind_loss 
         if Mg_next < 0:
-            print("NEGATIVE GAS MASS!! SOMETHING IS WRONG!!!")
+            Mg_next = mg_total_spl(time_steps[i+1])
+            # print("NEGATIVE GAS MASS!! SOMETHING IS WRONG!!!")
         #to get new stellar mass we compute the suriving mass of all previous SSPs and we add that with the new stellar mass
         Ms_next = delta_ms + ms_survs
         # MsX_next = np.dot(ms_survs_i,ssps_ini_zfracs) + delta_ms * (MgX/Mg)
@@ -736,11 +732,11 @@ def run_chempy_track(input_stuff):
         
         #in principle, we could add a non-zero threshold here to decrease computational time
         # print(ssps_ms)
-        print("---")
+        # print("---")
 
         if delta_ms > 0:
-            if verbose == True:
-                print(delta_ms)
+            # if verbose == True:
+                # print(delta_ms)
             #a new SSP was born and so we append its properties to the SSP list
             ssps_ms = np.concatenate((ssps_ms,[delta_ms]))
             ssps_tbirths = np.concatenate((ssps_tbirths,[time_steps[i+1]]))

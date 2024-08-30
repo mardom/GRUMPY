@@ -52,6 +52,9 @@ def extract_chem_params(iniconf=None,print_params = True):
     if iniconf['chem model']['stochastic'] not in ["True","False"]:
         raise ValueError("Incorrect entry for stochastic in 'chem model'. Allowed entries are : [ True, False ]")
 
+    if iniconf['chem model']['flexible_IGM'] not in ["True","False"]:
+        raise ValueError("Incorrect entry for flexible_IGM in 'chem model'. Allowed entries are : [ True, False ]")
+
     if iniconf['chem model']['stochastic'] == "True":
         if iniconf['chem model']['stochastic_resampling'] not in ["none","None"]:
             try:
@@ -90,8 +93,7 @@ def extract_chem_params(iniconf=None,print_params = True):
     if float(iniconf['chem model']['imf_mmax']) < float(iniconf['chem model']['imf_mmin']):
         raise ValueError("The maximum IMF mass cannot be smaller than the minimum IMF mass.")
 
-
-    param_string = "element_list log_zigm_mean log_zigm_sig ccsne_yields agb_yields sn1a_yields stochastic stochastic_resampling imf_mmax imf_mmin sn2_mmax sn2_mmin agb_mmax agb_mmin sn1a_time_delay sn1a_norm sn1a_exponent imf_name solar_abundances"
+    param_string = "element_list log_zigm_mean flexible_igm log_zigm_sig ccsne_yields agb_yields sn1a_yields stochastic stochastic_resampling imf_mmax imf_mmin sn2_mmax sn2_mmin agb_mmax agb_mmin sn1a_time_delay sn1a_norm sn1a_exponent model_nsm nsm_time_delay nsm_norm nsm_exponent imf_name solar_abundances"
 
     chem_params = namedtuple("chem_params",param_string)
 
@@ -99,6 +101,7 @@ def extract_chem_params(iniconf=None,print_params = True):
     chem_params = chem_params(element_list = iniconf['chem model']['elements_list'],
                                 log_zigm_mean = float(iniconf['chem model']['log_Z_IGM_mean']),
                                 log_zigm_sig = float(iniconf['chem model']['log_Z_IGM_sig']),
+                                flexible_igm = iniconf['chem model']['flexible_IGM'],
                                 ccsne_yields = iniconf['chem model']['ccsne_yields'],
                                 agb_yields = iniconf['chem model']['agb_yields'],
                                 sn1a_yields = iniconf['chem model']['sn1a_yields'],
@@ -113,6 +116,10 @@ def extract_chem_params(iniconf=None,print_params = True):
                                 sn1a_time_delay = float(iniconf['chem model']['sn1a_time_delay']),
                                 sn1a_norm = float(iniconf['chem model']['sn1a_norm']),
                                 sn1a_exponent = float(iniconf['chem model']['sn1a_exponent']),
+                                model_nsm = iniconf['chem model']['model_nsm'],
+                                nsm_time_delay = float(iniconf['chem model']['nsm_time_delay']),
+                                nsm_norm = float(iniconf['chem model']['nsm_norm']),
+                                nsm_exponent = float(iniconf['chem model']['nsm_exponent']),
                                 imf_name = iniconf['chem model']['imf_name'],
                                 solar_abundances = iniconf['chem model']['solar_abundances'])
 

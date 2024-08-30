@@ -136,8 +136,8 @@ def extract_model_params(iniconf=None,print_params = True):
     
     #constraint allowed value of zrei:
     #i do not think zrei > 10.8 is allowed..need to check this.
-    if float(iniconf['model params']['zrei']) > 10.8:
-        raise ValueError('Value of zrei should be <10.8')
+    # if float(iniconf['model params']['zrei']) > 10.8:
+    #     raise ValueError('Value of zrei should be <10.8')
 
     imf_types = ['Salpeter55', 'Chabrier03', 'Kroupa01', 'Dokkum08', 'Dave08']
 
@@ -173,7 +173,7 @@ def extract_model_params(iniconf=None,print_params = True):
                   OmL = OmL,
                   fbuni = fbuni)
     
-    param_string = "tausf eta_power eta_norm eta_mass eta_c Rloss1 Zsun Z_IGM SigHIth epsin_pr zwind zrei rei_model gamma beta h2_model rpert_sig yZ mstar_ini"
+    param_string = "tausf eta_power eta_norm eta_mass eta_c Rloss1 Zsun Z_IGM SigHIth epsin_pr zwind zrei rei_model gamma beta h2_model rpert_sig yZ mstar_ini tau_break alpha sigma_int t_sfr_ave"
 
     model_params = namedtuple("model_params",param_string)
 
@@ -199,7 +199,11 @@ def extract_model_params(iniconf=None,print_params = True):
                                 h2_model = iniconf['model params']['h2_model'],
                                 rpert_sig = float(iniconf['model params']['rpert_sig']),
                                 yZ = float(iniconf['model params']['yZ']),
-                                mstar_ini = float(iniconf['model params']['mstar_ini']))
+                                mstar_ini = float(iniconf['model params']['mstar_ini']),
+                                tau_break = float(iniconf['model params']['tau_break']),
+                                alpha = float(iniconf['model params']['alpha']),
+                                sigma_int = float(iniconf['model params']['sigma_int']),
+                                t_sfr_ave = float(iniconf['model params']['t_sfr_ave']) )
 
     ###print the parameter value summary!
     if print_params == True:
@@ -352,7 +356,7 @@ def run_grumpy(input_dict):
     data, good_index, tmdlmdlt, zspl, good_files = prepare_mh_tracks(cosmo=cosmo,iniconf=iniconf,suite_name = suite_name)
 
     # #run the integration now
-    Mout, Mpeak, zpeak, rperturb = integrate_model(tmdlmdlt=tmdlmdlt, 
+    Mout, Mpeak, zpeak, rperturb, deltatspl = integrate_model(tmdlmdlt=tmdlmdlt, 
                                                     good_index=good_index, 
                                                     data=data, zspl=zspl, 
                                                     params=model_params,
@@ -371,6 +375,7 @@ def run_grumpy(input_dict):
                                                 Mpeak=Mpeak,
                                                 zpeak=zpeak,
                                                 rperturb=rperturb,
+                                                deltatspl=deltatspl,
                                                 iniconf=iniconf)
 
     #run disk disruption if true

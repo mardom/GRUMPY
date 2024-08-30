@@ -92,8 +92,6 @@ def check_path_existence(all_paths=None):
     return
 
 
-
-
 def get_SSP(Z,net_yield = True,time_steps = np.logspace(-3,np.log10(15),50),chem_params = None,
             stochastic = False,ssp_mass = 1):
     '''
@@ -120,7 +118,7 @@ def get_SSP(Z,net_yield = True,time_steps = np.logspace(-3,np.log10(15),50),chem
     '''
     
     a = ModelParameters()
-
+ 
     basic_solar = solar_abundances()
     getattr(basic_solar, chem_params.solar_abundances)()
 
@@ -196,8 +194,102 @@ def get_SSP(Z,net_yield = True,time_steps = np.logspace(-3,np.log10(15),50),chem
     basic_ssp.agb_feedback(list(basic_agb.elements), dict(basic_agb.table), list(basic_agb.metallicities), float(a.agbmmin), float(a.agbmmax),solar_fractions) 
     basic_ssp.sn1a_feedback(list(basic_1a.elements), list(basic_1a.metallicities), dict(basic_1a.table), str(a.time_delay_functional_form), float(a.sn1ammin), float(a.sn1ammax), [a.N_0,a.sn1a_time_delay,a.sn1a_exponent,a.dummy],float(a.total_mass), a.stochastic_IMF)
         
+    #If I want flexible SNe Ia yields, I must compute the yields separately
+    #It must be possibe to use basic_ssp to compute the feedback from just sn2 or agb
+
     return time_steps, basic_ssp, elements_to_trace,solar_fractions
 
+
+def get_SSP_rprocess(Z,time_steps = np.logspace(-3,np.log10(15),50),chem_params=False,stochastic = False,ssp_mass = 1):
+    '''
+    We are instantiating a different SSP class here to track the delayed r-process enrichment channel.
+
+    Inputs:
+    ----------
+    Z = float, the metallicity of the SSP (not normed to solar value)
+    time_steps = array, the array of times at which we want ChemPy to compute SSP feedback
+    stochastic = bool, if we want stochastic sampling of IMF and SN Ia events
+    chem_params = contains all the SSP parameters entered in the .ini file
+    ssp_mass = float, if stochastic is True, then we want the mass of SSP
+    
+    Outputs:
+    ----------
+    time_steps = array, the array of times at which ChemPy has computed SSP feedback
+    basic_ssp = ChemPy object, contains tables of all elemental yields etc. 
+    elements_to_trace = array, array of the chemical elements that will be tracked by ChemPy
+    solar_fractions = array, the solar abundances of the elements tracked by ChemPy
+
+    Notes:
+    There is a weird numerical issue regarding time spacing the number of SN IA events. np.logspace(-3,np.log10(15),50) appears to be fine. 
+    Using upper bound of 14 causes issues. Linear spacing does not cause issues. Have checked that with 50 spacings it works fine
+    
+    '''
+    
+    a = ModelParameters()
+ 
+    basic_solar = solar_abundances()
+    getattr(basic_solar, chem_params.solar_abundances)()
+
+    a.mmax = chem_params.imf_mmax
+    a.mmin = chem_params.imf_mmin
+    a.sn2mmax = chem_params.sn2_mmax
+    a.sn2mmin = chem_params.sn2_mmin
+    a.agbmmax = chem_params.agb_mmax
+    a.agbmmin = chem_params.agb_mmin
+
+    #chempy found this to be the optimal value
+    a.mass_steps = 200000
+
+    if chem_params.imf_name == "Chabrier03":
+        a.imf_type_name = 'Chabrier_1'
+        a.chabrier_para1 = 0.69
+        a.chabrier_para2 = 0.079
+        a.high_mass_slope = -2.3
+        a.imf_parameter = (a.chabrier_para1, a.chabrier_para2, a.high_mass_slope)
+        basic_imf = IMF(a.mmin,a.mmax,a.mass_steps)
+        getattr(basic_imf, a.imf_type_name)((a.chabrier_para1,a.chabrier_para2,a.high_mass_slope))
+    else:
+        raise ValueError("Other IMFs have not been implemented yet.")
+    if stochastic == True:
+        basic_imf.stochastic_sampling(ssp_mass)
+        a.stochastic_IMF = True
+        a.total_mass = ssp_mass
+    else:
+        a.stochastic_IMF = False
+
+    # Load the yields of the default yield set
+    basic_sn2 = SN2_feedback()
+    getattr(basic_sn2, chem_params.ccsne_yields)() 
+    basic_agb = AGB_feedback()
+    getattr(basic_agb, chem_params.agb_yields)()
+    basic_1a = SN1a_feedback()
+    getattr(basic_1a, chem_params.sn1a_yields)()
+
+    ############################################################################################
+    elements_to_trace = list(np.unique(basic_agb.elements+basic_sn2.elements+basic_1a.elements))
+
+    #NSM DTD parameters.
+    #in chempy, we can model NSM DTD with the same code as SNe Ia 
+
+    a.sn1a_time_delay = chem_params.nsm_time_delay
+    a.N_0 = chem_params.nsm_norm
+    a.sn1a_exponent = chem_params.nsm_exponent
+    #something weird happens when this exponent is set to 1.
+    #need to look in the chempy code base for the reason
+
+    a.sn1a_parameter = [a.N_0,a.sn1a_time_delay,a.sn1a_exponent,a.dummy]
+               
+    # Initialise the SSP class with time-steps
+    #time_steps are fed in through the function
+    ssp_rproc = SSP(False, Z , np.copy(basic_imf.x), np.copy(basic_imf.dm), np.copy(basic_imf.dn), np.copy(time_steps), list(elements_to_trace), 'Argast_2000', 'logarithmic')
+    #In the above SSP object, the 'Argast_2000' denotes the parametrization for stellar lifetimes we use
+    #'logarithmic' denotes the nature of interpolation over the metallicities in yield set
+    
+    #compute all the feedback now 
+    ssp_rproc.sn1a_feedback(list(basic_1a.elements), list(basic_1a.metallicities), dict(basic_1a.table), str(a.time_delay_functional_form), float(a.sn1ammin), float(a.sn1ammax), [a.N_0,a.sn1a_time_delay,a.sn1a_exponent,a.dummy],float(a.total_mass), a.stochastic_IMF)
+        
+    #we just need the number of events as a function of time from this 
+    return time_steps, ssp_rproc
 
 def compute_yZ(basic_ssp,elements):
     '''
@@ -215,7 +307,6 @@ def compute_yZ(basic_ssp,elements):
             yZ += yield_xi  
         
     return yZ
-
 
 
 def create_chem_pickle(iniconf,chem_params,for_stochastic = False,verbose = True):
@@ -239,7 +330,6 @@ def create_chem_pickle(iniconf,chem_params,for_stochastic = False,verbose = True
     all_yZ_gross = []
     all_ssp_zmel = []
 
-
     z_grid = np.logspace(-6,-1.3,15)           
     #we compute the SSPs elemental feedback on this metallicity grid!
 
@@ -361,206 +451,6 @@ def create_chem_pickle(iniconf,chem_params,for_stochastic = False,verbose = True
 
     return 
 
-
-def Sanders21_MnFe_SNIa(feh):
-    '''
-    This function returns the [Mn/Fe]_Ia yield using an approximation to Figure 8 from Sanders 21 https://arxiv.org/pdf/2106.11324.pdf
-    '''
-    m = 0.31431361784399675
-    b = 0.24288017091128827
-
-    return feh*m + b 
-
-
-def create_chem_pickle_TRIAL(iniconf,chem_params,for_stochastic = False,verbose = True):
-    '''
-    In this function, we read or generate a grid of chemical yields
-    '''
-
-    # Load the yields of the default yield set
-    basic_sn2 = SN2_feedback()
-    getattr(basic_sn2, chem_params.ccsne_yields)() 
-    basic_agb = AGB_feedback()
-    getattr(basic_agb, chem_params.agb_yields)()
-    basic_1a = SN1a_feedback()
-    getattr(basic_1a, chem_params.sn1a_yields)()
-
-    elements_to_trace = list(np.unique(basic_agb.elements+basic_sn2.elements+basic_1a.elements))
-
-    all_ms_surv = []
-    all_ms_feedback = []
-    all_tt_cumul = []
-    all_yZ_gross = []
-    all_ssp_zmel = []
-    all_Feh  = []
-    z_grid = np.logspace(-6,-1.3,15)           
-    #we compute the SSPs elemental feedback on this metallicity grid!
-
-    #we make the dictionary we wish to populate
-    all_yields = {}
-    for ei in elements_to_trace:
-        all_yields[ei+"_net"] = []
-        all_yields[ei+"_diff"] = []
-
-    all_yields["Mn_S21_IA_net"] = []
-    all_yields["Mn_S21_CC_AGB_net"] = []
-
-        
-    if for_stochastic == False:
-        print_stage("The chemical yield grid is being generated!")
-    
-    #all_yields is an empty dictionary    
-    for zi in tqdm(z_grid):
-
-        tt_i,ssp_net_i,elements_to_trace,solar_fractions =  get_SSP(zi,net_yield = True,chem_params=chem_params)
-            
-        tt_i,ssp_gross_i,elements_to_trace,solar_fractions =  get_SSP(zi,net_yield = False,chem_params = chem_params)
-        
-        yZ_gross_i = compute_yZ(ssp_gross_i,elements_to_trace)
-        all_yZ_gross.append( yZ_gross_i) 
-        
-        #we need to loop through each element now ... 
-        for ei in elements_to_trace:
-            ei_net_yield = np.cumsum(ssp_net_i.agb_table[ei]+ssp_net_i.sn2_table[ei]+ssp_net_i.sn1a_table[ei]  )
-            ei_gross_yield = np.cumsum(ssp_gross_i.agb_table[ei]+ssp_gross_i.sn2_table[ei]+ssp_gross_i.sn1a_table[ei]  )
-            
-            ei_diff = ei_gross_yield - ei_net_yield 
-            
-            all_yields[ei+"_net"].append(ei_net_yield)
-            all_yields[ei+"_diff"].append(ei_diff)
-
-            if ei == "Mn":
-                #we add the modification here 
-                #these grids are going to be a function of the gas [Fe/H] value and
-                #I can get the 
-                sn1a_tot_num = np.sum(ssp_net_i.table['sn1a'])
-                Fe_1a_tot = np.sum(ssp_net_i.sn1a_table['Fe'])
-
-                fe_per_snIa = Fe_1a_tot/sn1a_tot_num
-                #we can compute how much iron is made per sn1a. And then we scale the Mn such that it agrees with Sanders 21 result 
-                feh_value = np.log10(zi/0.015)
-                mnfe_ia = Sanders21_MnFe_SNIa(feh_value)
-
-                #using this we get the Mn yield in absolute terms
-                mn_solar = 1.08178346e-05
-                fe_solar = 0.00129197
-                #this is the amount of Mn made per SnIa event according to the S21 approximation
-                mn_per_snIa = (10**mnfe_ia) * (mn_solar / fe_solar) * fe_per_snIa
-
-                Mn_sn1a_evo = ssp_net_i.table['sn1a'] * mn_per_snIa
-
-                #we modify the CC SNE yield as well to agree with observations as well...this is more of like the starting point in the char
-                #for now, let us not modify the CC SNE yields, let us just see how much SNIA can do. 
-             
-                all_yields["Mn_S21_IA_net"].append( np.cumsum(Mn_sn1a_evo)  )
-
-                all_yields["Mn_S21_CC_AGB_net"].append( np.cumsum(ssp_net_i.agb_table["Mn"]+ssp_net_i.sn2_table["Mn"] ))
-
-                all_Feh.append( feh_value + np.zeros_like(tt_i))
-
-        all_ms_surv.append( ssp_net_i.table['mass_in_ms_stars']) 
-        all_ms_feedback.append(  np.cumsum(ssp_net_i.table['mass_of_ms_stars_dying']) - np.cumsum(ssp_net_i.table['mass_in_remnants'])     ) 
-        
-        all_tt_cumul.append(tt_i)
-        all_ssp_zmel.append(zi + np.zeros_like(tt_i) )
-                
-    #let us concatenate all the terms inside the dictionary
-    for ei in elements_to_trace:
-        all_yields[ei+"_net"] = np.array(all_yields[ei+"_net"])
-        all_yields[ei+"_diff"] = np.array(all_yields[ei+"_diff"])
-
-    all_yields["Mn_S21_IA_net"] = np.array(all_yields["Mn_S21_IA_net"])
-    all_yields["Mn_S21_CC_AGB_net"] = np.array(all_yields["Mn_S21_CC_AGB_net"])
-
-    all_feh_vals = np.concatenate(all_Feh)
-    all_feh_grid = np.unique(all_feh_vals)
-    print(all_feh_grid)
-
-    all_ssp_zmel = np.concatenate(all_ssp_zmel)
-    all_ssp_zgrid = np.unique(all_ssp_zmel)
-    all_tt_cumul = np.concatenate(all_tt_cumul)
-    all_tt_grid = np.unique(all_tt_cumul)
-    all_ms_surv = np.array(all_ms_surv)
-    all_ms_feedback = np.array(all_ms_feedback)
-    all_yZ_gross = np.array(all_yZ_gross)
-
-
-    ##now we do the actual spline fitting
-    ms_feedback_interp = RectBivariateSpline(np.log10(all_ssp_zgrid),np.log10(all_tt_grid), all_ms_feedback ,kx=1,ky=1)
-    ms_surv_interp = RectBivariateSpline(np.log10(all_ssp_zgrid),np.log10(all_tt_grid), all_ms_surv ,kx=1,ky=1)
-    yZ_gross_interp = RectBivariateSpline(np.log10(all_ssp_zgrid),np.log10(all_tt_grid), all_yZ_gross ,kx=1,ky=1)
-
-    #now we loop over each of the dictionaries
-    for ei in elements_to_trace:
-        net_pts = all_yields[ei+"_net"]
-        diff_pts = all_yields[ei+"_diff"]
-        
-        ei_net_interp = RectBivariateSpline(np.log10(all_ssp_zgrid),np.log10(all_tt_grid), net_pts ,kx=1,ky=1)
-        ei_diff_interp = RectBivariateSpline(np.log10(all_ssp_zgrid),np.log10(all_tt_grid), diff_pts ,kx=1,ky=1)
-
-        if ei == "Mn":
-            mn_ia_pts = all_yields["Mn_S21_IA_net"]
-            mn_cc_agb_pts = all_yields["Mn_S21_CC_AGB_net"]
-
-            Mn_S21_IA_interp = RectBivariateSpline(all_feh_grid,np.log10(all_tt_grid), mn_ia_pts ,kx=1,ky=1)
-            Mn_S21_CC_AGB_interp = RectBivariateSpline(np.log10(all_ssp_zgrid),np.log10(all_tt_grid), mn_cc_agb_pts ,kx=1,ky=1)
-
-            all_yields["Mn_S21_IA_net"] = Mn_S21_IA_interp
-            all_yields["Mn_S21_CC_AGB_net"] = Mn_S21_CC_AGB_interp
-
-        #if verbose is true, then we will print some example yields to see the values are according to expectations
-        if verbose == True:
-            if ei == "Fe":
-                print("Total Net Fe yield, Z = 1e-3, t = 15 Gyr :",ei_net_interp([-3],[np.log10(15)],grid = False) )
-                print("Total Net Fe yield, Z = 1e-3, t = 2 Gyr :",ei_net_interp([-3],[np.log10(2)] ,grid = False)  )
-            if ei == "Mg":
-                print("Total Net Mg yield, Z = 1e-3, t = 2 Gyr :",ei_net_interp([-3],[np.log10(2)], grid = False) )
-
-
-        all_yields[ei+"_net"] = ei_net_interp
-        all_yields[ei+"_diff"] = ei_diff_interp
-
-    all_yields["ms_surv"] = ms_surv_interp
-    all_yields["ms_feedback"] = ms_feedback_interp
-    all_yields["yZ_gross"] = yZ_gross_interp
-
-
-    all_yields["solar_fractions"] = solar_fractions
-    all_yields["elements"] = elements_to_trace
-
-    #now we add all the cham params
-    all_yields["ccsne_yields"] = chem_params.ccsne_yields
-    all_yields["agb_yields"] = chem_params.agb_yields
-    all_yields["sn1a_yields"] = chem_params.sn1a_yields
-    all_yields["stochastic"] = chem_params.stochastic
-    all_yields["imf_mmax"] = chem_params.imf_mmax
-    all_yields["imf_mmin"] = chem_params.imf_mmin
-    all_yields["sn2_mmax"] = chem_params.sn2_mmax
-    all_yields["sn2_mmin"] = chem_params.sn2_mmin
-    all_yields["agb_mmax"] = chem_params.agb_mmax
-    all_yields["agb_mmin"] = chem_params.agb_mmin
-    all_yields["sn1a_time_delay"] = chem_params.sn1a_time_delay
-    all_yields["sn1a_norm"] = chem_params.sn1a_norm
-    all_yields["sn1a_exponent"] = chem_params.sn1a_exponent
-    all_yields["imf_name"] = chem_params.imf_name
-
-
-    if for_stochastic == False:
-
-        ##let us check if this makes sense 
-        save_pickle_path = iniconf['chem model']['chem_grids_path'] + "/" + iniconf['chem model']['chem_grid_pickle']
-        with open(save_pickle_path, 'wb') as f:
-            pickle.dump(all_yields, f)
-
-        print_stage("The chemical yield grid has been stored here %s"%save_pickle_path)
-
-    if for_stochastic == True:
-        save_pickle_path = iniconf['chem model']['chem_grids_path'] + "/" + iniconf['chem model']['chem_grid_pickle'] + "/" + iniconf['chem model']['chem_grid_pickle'] + "_analytical.pickle"
-        #note that Mk refers to the kth SSP mass (in the list ssp_masses_grid) and Ig refers to the gth iteration with that SSP mass (there are a total of 75 iterations )
-        with open(save_pickle_path, 'wb') as f:
-            pickle.dump(all_yields, f)
-
-    return 
 
 
 
@@ -661,6 +551,7 @@ def gen_single_stoc_chem_grid(input_stuff):
     z_grid = input_stuff["z_grid"]
     chem_params = input_stuff["chem_params"]
     ssp_mass_i = input_stuff["ssp_mass"]
+    iniconf = input_stuff["iniconf"]
 
     chem_params = convert(chem_params)
 
@@ -831,7 +722,7 @@ def create_chem_pickle_stochastic(iniconf,chem_params):
     for k,ssp_mass_i in enumerate(ssp_masses_grid):
         for g in range(stoc_iter):
             input_stuff_i = { "g":g,"k":k,"elements_to_trace":elements_to_trace,"z_grid":z_grid,
-                            "chem_params":chem_params._asdict(),"ssp_mass":ssp_mass_i}
+                            "chem_params":chem_params._asdict(),"ssp_mass":ssp_mass_i,"iniconf":iniconf}
             all_inputs.append(input_stuff_i)
 
     if run_parallel == "False":
@@ -859,6 +750,11 @@ def create_chem_pickle_stochastic(iniconf,chem_params):
 
 
 
+
+
+
+
+
 if __name__ == '__main__':
     # read in command line arguments
     args = argument_parser().parse_args()
@@ -868,6 +764,7 @@ if __name__ == '__main__':
     chem_params = extract_chem_params(iniconf=iniconf,print_params=True)
 
     if chem_params.stochastic == "True":
+        print("Stochastic yields being generated")
         create_chem_pickle_stochastic(iniconf = iniconf,chem_params = chem_params)
     else:
         create_chem_pickle(iniconf = iniconf,chem_params = chem_params)

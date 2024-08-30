@@ -71,6 +71,9 @@ def run_single_fsps(input_stuff=None):
     time = input_stuff["time"]
     final_ending = input_stuff["final_ending"]
     fsps_filters = input_stuff["fsps_filters"]
+    add_stoch_z = input_stuff["add_stoch_z"]
+    stoch_z_sig = input_stuff["stoch_z_sig"]
+
     
     table_path = fsps_input_path + "/" + sfh_name + ".dat"
     #check if this path exists. If this path does not exist, print all the relevant quantities.
@@ -85,7 +88,12 @@ def run_single_fsps(input_stuff=None):
     data = np.loadtxt(table_path)
     age = data[:,0]
     sfr = data[:,1]
-    Z = data[:,2]
+    #if we want to additionally perturb the metallicity, we do this 
+    if add_stoch_z == "True":
+        Z = data[:,2] * 10**stoch_z_sig 
+    else:
+        Z = data[:,2] #no additional perturbation to metallicity
+
     if np.max(sfr) == 0:
         sfr[np.argmax(sfr)] = 1e-32
         #the fsps python requires atleast one value with sfr > 1e-33
@@ -118,6 +126,8 @@ def run_fsps_python(iniconf=None, cosmo=None, use_time=None):
     fsps_input_path = iniconf['output paths']['fsps_input_dir']
     fsps_output_path = iniconf['output paths']['fsps_output_dir']
     temp_txt_path = iniconf['output paths']['fsps_input_dir'][:-5] + "/temp.txt"
+    add_stoch_z = iniconf['fsps params']['add_stochastic_Z']
+    stoch_z_sig = float(iniconf['fsps params']['Z_stochastic_sig'])
 
     #intialize the stellar population model. 
     #we set the Stellar Population model for tabular functionality. Thus, zcontinuous = 3 and sfh = 3 
@@ -155,7 +165,10 @@ def run_fsps_python(iniconf=None, cosmo=None, use_time=None):
     iter_input = []
 
     if use_time is None:
-        t_fsps = 9.77814e2 / cosmo.H0 # 1/H0 in Gyrs
+        # t_fsps = 9.77814e2 / cosmo.H0 # 1/H0 in Gyrs
+        #if no time is provided, we want to use the last time step in the simulation.
+        #this is just the age of the universe, z = 0
+        t_fsps = age(1.0, cosmo.Om0, cosmo.OmL)  * 9.77814e2 / cosmo.H0 
     else:
         t_fsps = use_time
         
@@ -167,16 +180,19 @@ def run_fsps_python(iniconf=None, cosmo=None, use_time=None):
 
         dicti = {"sps": sps, "sfh_name": sfhi.replace(".dat",'').replace(fsps_input_path+"/",""),
                  "fsps_input_path": fsps_input_path, "fsps_output_path": fsps_output_path,
-                 "time": t_fsps, "final_ending": None, "fsps_filters": fsps_filters} 
+                 "time": t_fsps, "final_ending": None, "fsps_filters": fsps_filters, "add_stoch_z": add_stoch_z, 
+                 "stoch_z_sig":stoch_z_sig} 
 
         iter_input.append(dicti)
 
     #run the first calculation. This usually takes 5 min. The remaining ones happen fast.
     print('will produce magnitudes in the following filters:', fsps_filters)
-    run_single_fsps(iter_input[0])
+    for i in range(len(iter_input)):
+        run_single_fsps(iter_input[i])
 
+    ## I AM NOT SURE WHY THE PARALLEL ONE GIVES ME AN ERROR...
     #running fsps in parallel
-    run_parallel(run_single_fsps, iter_input[1:])
+    # run_parallel(run_single_fsps, iter_input[1:])
 
     return
 

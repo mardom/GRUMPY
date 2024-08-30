@@ -116,6 +116,7 @@ def get_tmdlmdlt(data=None, pickleloc=None,iniconf=None,pickle_create=False):
         for i in range(len(times)):
 
             t_i = times[i]
+
             aexp_i = aexp[i]
             m200c_i = m200c[i] #array of m200c halo masses
 
@@ -127,8 +128,10 @@ def get_tmdlmdlt(data=None, pickleloc=None,iniconf=None,pickle_create=False):
                 good_files.append(mah_names[i])
         
                 lt, lmv = np.log(t_i), np.log(m200c_i/m200c_i[-1])
-        
+
+                
                 spl = UnivariateSpline(lt, lmv, s=0)
+
                 spltd = spl(lt)
                 #we constrain the spline to positive slopes only
                 for ih, _ in enumerate(spltd[1:]):

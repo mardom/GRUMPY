@@ -180,7 +180,9 @@ def reduce_data(mah_data_dir=None,tspl=None,iniconf=None,suite_name=None):
         rvir_key = iniconf['track format']["rvir"]
         rs_key = iniconf['track format']["rs"]
 
-        sub_sample_inds = get_subsample_scales(np.array(track_data[scale_key]), tar_diff = 0.014)
+        #what is this sub-sample inds really doing?
+        # sub_sample_inds = get_subsample_scales(np.array(track_data[scale_key]), tar_diff = 0.014)
+        sub_sample_inds = np.arange(len(np.array(track_data[scale_key])))
 
         #we can probably make this into pandas or something to avoid confusion between columns
 
@@ -261,7 +263,10 @@ def reduce_data(mah_data_dir=None,tspl=None,iniconf=None,suite_name=None):
             vmax_if = vmax_i[aexp_i > scale_start ]
                 
         else:
+
             aexp_if = aexp_i[aexp_i > 0]
+
+
             mvir_if = mvir_i[aexp_i > 0 ]
             rvir_if = rvir_i[aexp_i > 0 ] 
             rs_if = rs_i[aexp_i > 0 ]
@@ -292,6 +297,7 @@ def reduce_data(mah_data_dir=None,tspl=None,iniconf=None,suite_name=None):
         ID_ifs = ID_if[sort_inds]
         zred_ifs = zred_if[sort_inds]
         t_ifs = t_if[sort_inds]
+
         xc_ifs = xc_if[sort_inds]
         yc_ifs = yc_if[sort_inds]
         zc_ifs = zc_if[sort_inds]
@@ -300,12 +306,10 @@ def reduce_data(mah_data_dir=None,tspl=None,iniconf=None,suite_name=None):
         vzc_ifs = vzc_if[sort_inds]
         vmax_ifs = vmax_if[sort_inds]
 
-
         #the above are sorted in ascending order of time
 
         #we do the below mvir to m200c only if needed
         m200c_exists = iniconf['track format']['m200c_exists']
-
 
         if m200c_exists == "False":
 
